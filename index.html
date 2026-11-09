@@ -1,0 +1,190 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Barber Performance</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;padding:20px;background:#090b0a;color:#f5f5f5;font-family:Arial,sans-serif}
+h1{color:#a5ff75}
+.card{background:#171b19;padding:18px;border-radius:16px;margin:15px 0}
+input,select,button{width:100%;padding:13px;margin:7px 0;border-radius:9px;border:1px solid #383e3a;font-size:16px}
+input,select{background:#222824;color:white}
+button{background:#a5ff75;color:#101510;font-weight:bold;border:0}
+small{color:#a5ff75}
+.resultado{font-size:25px;font-weight:bold;margin-top:8px}
+label{display:block;margin-top:12px}
+.item{border-bottom:1px solid #383e3a;padding:12px 0}
+</style>
+</head>
+<body>
+
+<h1>BARBER PERFORMANCE</h1>
+<p>Seu desempenho. Seus resultados.</p>
+
+<div class="card">
+<h3>Novo atendimento</h3>
+
+<label>Data</label>
+<input type="date" id="data">
+
+<label>Serviço</label>
+<select id="servico">
+<option value="cabelo">Cabelo</option>
+<option value="barba">Barba</option>
+<option value="ambos">Cabelo + Barba</option>
+</select>
+
+<label>Valor do cabelo (R$)</label>
+<input type="number" id="cabelo" value="35" step="0.01">
+
+<label>Valor da barba (R$)</label>
+<input type="number" id="barba" value="25" step="0.01">
+
+<label>Desconto total (R$)</label>
+<input type="number" id="desconto" value="0" min="0" step="0.01">
+
+<button onclick="salvar()">SALVAR ATENDIMENTO</button>
+<p id="mensagem"></p>
+</div>
+
+<div class="card">
+<h3>Seu painel</h3>
+<label>Período</label>
+<select id="periodo" onchange="atualizar()">
+<option value="7">Últimos 7 dias</option>
+<option value="15">Últimos 15 dias</option>
+<option value="30" selected>Últimos 30 dias</option>
+</select>
+
+<p>Atendimentos</p>
+<div class="resultado" id="totalAtendimentos">0</div>
+
+<p>Faturamento líquido</p>
+<div class="resultado" id="faturamento">R$ 0,00</div>
+
+<p>Sua comissão (50%)</p>
+<div class="resultado" id="comissao">R$ 0,00</div>
+</div>
+
+<div class="card">
+<h3>Histórico</h3>
+<div id="historico">Nenhum atendimento registrado.</div>
+</div>
+
+<script>
+const chave = "barber_performance_v1";
+let registros = [];
+
+try {
+  registros = JSON.parse(localStorage.getItem(chave) || "[]");
+  if (!Array.isArray(registros)) registros = [];
+} catch(e) {
+  registros = [];
+}
+
+document.getElementById("data").value =
+  new Date().toLocaleDateString("en-CA");
+
+function dinheiro(valor) {
+  return Number(valor).toLocaleString("pt-BR", {
+    style:"currency", currency:"BRL"
+  });
+}
+
+function salvar() {
+  const data = document.getElementById("data").value;
+  const servico = document.getElementById("servico").value;
+  let cabelo = Number(document.getElementById("cabelo").value) || 0;
+  let barba = Number(document.getElementById("barba").value) || 0;
+  const desconto = Number(document.getElementById("desconto").value) || 0;
+
+  if (!data) {
+    alert("Informe a data.");
+    return;
+  }
+
+  if (servico === "cabelo") barba = 0;
+  if (servico === "barba") cabelo = 0;
+
+  const bruto = cabelo + barba;
+
+  if (bruto <= 0 || desconto < 0 || desconto > bruto) {
+    alert("Confira os valores e o desconto.");
+    return;
+  }
+
+  const liquido = bruto - desconto;
+
+  registros.push({
+    id: Date.now(),
+    data,
+    servico,
+    cabelo,
+    barba,
+    desconto,
+    liquido,
+    comissao: liquido * 0.5
+  });
+
+  try {
+    localStorage.setItem(chave, JSON.stringify(registros));
+    document.getElementById("mensagem").textContent =
+      "Atendimento salvo com sucesso!";
+    document.getElementById("desconto").value = 0;
+    atualizar();
+  } catch(e) {
+    alert("Não foi possível salvar. Verifique o armazenamento do navegador.");
+  }
+}
+
+function atualizar() {
+  const dias = Number(document.getElementById("periodo").value);
+  const limite = new Date();
+  limite.setHours(0,0,0,0);
+  limite.setDate(limite.getDate() - (dias - 1));
+
+  const lista = registros.filter(r => {
+    const d = new Date(r.data + "T00:00:00");
+    return d >= limite && d <= new Date();
+  });
+
+  const soma = lista.reduce((a,r) => a + r.liquido, 0);
+  const comissao = soma * 0.5;
+
+  document.getElementById("totalAtendimentos").textContent = lista.length;
+  document.getElementById("faturamento").textContent = dinheiro(soma);
+  document.getElementById("comissao").textContent = dinheiro(comissao);
+
+  const historico = document.getElementById("historico");
+
+  if (!registros.length) {
+    historico.textContent = "Nenhum atendimento registrado.";
+    return;
+  }
+
+  historico.innerHTML = [...registros].reverse().map(r => `
+    <div class="item">
+      <strong>${r.data.split("-").reverse().join("/")}</strong><br>
+      ${r.servico === "ambos" ? "Cabelo + Barba" :
+        r.servico === "cabelo" ? "Cabelo" : "Barba"}<br>
+      Líquido: ${dinheiro(r.liquido)}<br>
+      Sua comissão: <small>${dinheiro(r.comissao)}</small><br>
+      <button onclick="excluir(${r.id})">Excluir</button>
+    </div>
+  `).join("");
+}
+
+function excluir(id) {
+  if (!confirm("Deseja excluir este atendimento?")) return;
+  registros = registros.filter(r => r.id !== id);
+  localStorage.setItem(chave, JSON.stringify(registros));
+  atualizar();
+}
+
+atualizar();
+</script>
+</body>
+</html>
